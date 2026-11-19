@@ -31,17 +31,21 @@ samples, then runs a CA-CFAR-style peak finder and heuristic classifier
 //      for (auto& s : signals)
 //          std::cout << s.freq.in(au::mega(au::hertz)) << " MHz  " << s.type << "\n";
 // ═══════════════════════════════════════════════════════════════════════════
-#include "Types.hpp"    // DetectedSignal lives here (also re-exports sdr/Types.hpp)
+#include "Types.hpp"  // DetectedSignal lives here (also re-exports sdr/Types.hpp)
 #include "sdrsdk/units.hpp"
-#include <vector>
+
+#include <fftw3.h>
+
 #include <complex>
 #include <string>
 #include <tuple>
-#include <fftw3.h>
+#include <vector>
 
-namespace sdr {
+namespace sdr
+{
 
-class Spectrum {
+class Spectrum
+{
 public:
     explicit Spectrum(int frame_size = 8192);
     ~Spectrum();
@@ -53,41 +57,43 @@ public:
     // Returns {freq_hz_axis, power_db_axis}, both of length frame_size.
     std::tuple<std::vector<au::QuantityD<au::Hertz>>, std::vector<double>>
     welch(const std::vector<std::complex<float>>& samples,
-          au::QuantityD<au::Hertz> cf, au::QuantityD<au::Hertz> sr) const;
+          au::QuantityD<au::Hertz>                cf,
+          au::QuantityD<au::Hertz>                sr) const;
 
     // Overload for interleaved float array.
     std::tuple<std::vector<au::QuantityD<au::Hertz>>, std::vector<double>>
     welch(const std::vector<float>& iq,
-          au::QuantityD<au::Hertz> cf, au::QuantityD<au::Hertz> sr) const;
+          au::QuantityD<au::Hertz>  cf,
+          au::QuantityD<au::Hertz>  sr) const;
 
     // Find signals above noise_floor + threshold_db.
     // Merges peaks within 50 kHz (FM pilot / RDS tones) and classifies.
-    std::vector<DetectedSignal>
-    find_signals(const std::vector<au::QuantityD<au::Hertz>>& freq_hz,
-                 const std::vector<double>& psd_db,
-                 double threshold_db = 10.0) const;
+    std::vector<DetectedSignal> find_signals(const std::vector<au::QuantityD<au::Hertz>>& freq_hz,
+                                             const std::vector<double>&                   psd_db,
+                                             double threshold_db = 10.0) const;
 
     // One-shot: welch + find_signals
-    std::vector<DetectedSignal>
-    analyse(const std::vector<std::complex<float>>& samples,
-            au::QuantityD<au::Hertz> cf, au::QuantityD<au::Hertz> sr,
-            double threshold_db = 10.0) const;
+    std::vector<DetectedSignal> analyse(const std::vector<std::complex<float>>& samples,
+                                        au::QuantityD<au::Hertz>                cf,
+                                        au::QuantityD<au::Hertz>                sr,
+                                        double threshold_db = 10.0) const;
 
-    int frame_size() const { return frame_; }
+    int frame_size() const
+    {
+        return frame_;
+    }
 
 private:
-    int             frame_;
-    fftwf_plan      plan_  = nullptr;
-    fftwf_complex*  in_    = nullptr;
-    fftwf_complex*  out_   = nullptr;
+    int                frame_;
+    fftwf_plan         plan_ = nullptr;
+    fftwf_complex*     in_   = nullptr;
+    fftwf_complex*     out_  = nullptr;
     std::vector<float> win_;
 
-    static std::string classify(au::QuantityD<au::Hertz> freq_hz,
-                                    au::QuantityD<au::Hertz> bw_hz);
+    static std::string classify(au::QuantityD<au::Hertz> freq_hz, au::QuantityD<au::Hertz> bw_hz);
 };
 
-
-} // namespace sdr
+}  // namespace sdr
 
 /*
 ========================================================================

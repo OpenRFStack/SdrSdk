@@ -35,17 +35,21 @@ Contact author for permission: https://github.com/OpenRFStack
  * @see IqStream, Spectrum, units.hpp
  */
 #pragma once
-#include <sdr/Types.hpp>
 #include "sdrsdk/units.hpp"
-#include <stdexcept>
+
+#include <sdr/Types.hpp>
+
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
-namespace sdr {
+namespace sdr
+{
 
 /// @brief Exception thrown by SdrClient when the task request fails or times out.
-struct SdrError : std::runtime_error {
+struct SdrError : std::runtime_error
+{
     using std::runtime_error::runtime_error;
 };
 
@@ -59,17 +63,19 @@ struct SdrError : std::runtime_error {
  * @note Non-copyable (owns an AMQP connection).  Movable.
  * @note connect() must be called before any task method.
  */
-class SdrClient {
+class SdrClient
+{
 public:
     /// @brief Full connection and task configuration.
-    struct Config {
-        std::string broker      = "amqp://localhost:5672"; ///< AMQP broker URL.
-        std::string user        = "sdr_ctrl";              ///< AMQP username.
-        std::string password    = "sdr_hw_test";           ///< AMQP password.
-        std::string req_queue   = "sdr.task.request";      ///< Outbound task request queue.
-        std::string resp_queue  = "sdr.task.response";     ///< Inbound task response queue.
-        std::string dest_ip     = "127.0.0.1";             ///< Local IP for UDP IQ receive.
-        au::QuantityD<au::Seconds> timeout = sdrunit::s(20.0); ///< Response wait timeout.
+    struct Config
+    {
+        std::string broker                 = "amqp://localhost:5672";  ///< AMQP broker URL.
+        std::string user                   = "sdr_ctrl";               ///< AMQP username.
+        std::string password               = "sdr_hw_test";            ///< AMQP password.
+        std::string req_queue              = "sdr.task.request";   ///< Outbound task request queue.
+        std::string resp_queue             = "sdr.task.response";  ///< Inbound task response queue.
+        std::string dest_ip                = "127.0.0.1";          ///< Local IP for UDP IQ receive.
+        au::QuantityD<au::Seconds> timeout = sdrunit::s(20.0);     ///< Response wait timeout.
     };
 
     /**
@@ -80,9 +86,9 @@ public:
      * @param dest_ip Local IP that SdrResourceManager streams IQ to.
      */
     explicit SdrClient(const std::string& broker   = "amqp://localhost:5672",
-                       const std::string& user      = "sdr_ctrl",
-                       const std::string& password  = "sdr_hw_test",
-                       const std::string& dest_ip   = "127.0.0.1");
+                       const std::string& user     = "sdr_ctrl",
+                       const std::string& password = "sdr_hw_test",
+                       const std::string& dest_ip  = "127.0.0.1");
     /// @brief Construct from a full Config struct.
     explicit SdrClient(Config cfg);
     ~SdrClient();
@@ -151,8 +157,8 @@ public:
      * @param repeat   If true, the sweep repeats until @c stop() is called.
      */
     TaskResponse scan(const std::vector<ScanEntry>& entries,
-                      bool                       repeat   = false,
-                      au::QuantityD<au::Seconds> duration = sdrunit::s(30.0));
+                      bool                          repeat   = false,
+                      au::QuantityD<au::Seconds>    duration = sdrunit::s(30.0));
 
     /**
      * @brief Request a synchronous FFT snapshot (Welch-averaged PSD).
@@ -163,14 +169,15 @@ public:
     TaskResponse snapshot(au::QuantityD<au::Hertz> cf,
                           au::QuantityD<au::Hertz> bw,
                           au::QuantityD<au::Hertz> sr,
-                          int fft_size = 1024, int n_averages = 4);
+                          int                      fft_size   = 1024,
+                          int                      n_averages = 4);
 
     /// @brief Request a calibration capture (noise floor measurement).
-    TaskResponse calibration(au::QuantityD<au::Hertz>   cf,
-                             au::QuantityD<au::Hertz>   bw,
-                             au::QuantityD<au::Hertz>   sr,
-                             au::QuantityD<au::Seconds> duration = sdrunit::s(2.0),
-                             const std::vector<std::string>& devices = {});
+    TaskResponse calibration(au::QuantityD<au::Hertz>        cf,
+                             au::QuantityD<au::Hertz>        bw,
+                             au::QuantityD<au::Hertz>        sr,
+                             au::QuantityD<au::Seconds>      duration = sdrunit::s(2.0),
+                             const std::vector<std::string>& devices  = {});
 
     /// @brief Stop a running task and release its UDP port.
     /// @param task_id Task ID from @c TaskResponse::task_id.
@@ -183,10 +190,10 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
-    Config cfg_;
+    Config                cfg_;
 };
 
-} // namespace sdr
+}  // namespace sdr
 
 /*
 ========================================================================

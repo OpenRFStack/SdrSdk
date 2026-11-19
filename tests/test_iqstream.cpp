@@ -10,19 +10,21 @@ Do not use for commercial, organizational, or military purposes.
 Contact author for permission: https://github.com/OpenRFStack
 ========================================================================
 */
+#include <arpa/inet.h>
 #include <gtest/gtest.h>
+#include <netinet/in.h>
 #include <sdrsdk/IqStream.hpp>
 #include <sdrsdk/units.hpp>
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <unistd.h>
+
+#include <chrono>
 #include <cstring>
 #include <thread>
-#include <chrono>
 
 // Send a single synthetic IQ packet to the given port
-static void send_packet(int port, int n_samples) {
+static void send_packet(int port, int n_samples)
+{
     int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
 
     sdr::IqPacketHeader hdr{};
@@ -45,14 +47,17 @@ static void send_packet(int port, int n_samples) {
     ::close(fd);
 }
 
-TEST(IqStream, ReceivesPacket) {
-    int port = 34567;
+TEST(IqStream, ReceivesPacket)
+{
+    int           port = 34'567;
     sdr::IqStream stream(port, sdrunit::s(2.0));
 
-    std::thread sender([port]{
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        send_packet(port, 256);
-    });
+    std::thread sender(
+        [port]
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            send_packet(port, 256);
+        });
 
     auto samples = stream.collect(256);
     sender.join();
@@ -61,21 +66,24 @@ TEST(IqStream, ReceivesPacket) {
     EXPECT_GE((int)samples.size(), 256 * 2);
 }
 
-TEST(IqStream, IgnoresBadMagic) {
-    int port = 34568;
+TEST(IqStream, IgnoresBadMagic)
+{
+    int           port = 34'568;
     sdr::IqStream stream(port, sdrunit::s(1.0));
 
-    std::thread sender([port]{
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
-        uint8_t garbage[64] = {0xFF};
-        sockaddr_in dst{};
-        dst.sin_family = AF_INET;
-        dst.sin_port   = htons(port);
-        inet_pton(AF_INET, "127.0.0.1", &dst.sin_addr);
-        ::sendto(fd, garbage, sizeof(garbage), 0, (sockaddr*)&dst, sizeof(dst));
-        ::close(fd);
-    });
+    std::thread sender(
+        [port]
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            int         fd          = ::socket(AF_INET, SOCK_DGRAM, 0);
+            uint8_t     garbage[64] = {0xFF};
+            sockaddr_in dst{};
+            dst.sin_family = AF_INET;
+            dst.sin_port   = htons(port);
+            inet_pton(AF_INET, "127.0.0.1", &dst.sin_addr);
+            ::sendto(fd, garbage, sizeof(garbage), 0, (sockaddr*)&dst, sizeof(dst));
+            ::close(fd);
+        });
 
     auto samples = stream.collect_for(sdrunit::s(0.6));
     sender.join();

@@ -21,17 +21,18 @@ All SdrClient methods accept au::QuantityD<au::Hertz> and au::QuantityD<au::Seco
 #pragma once
 
 // Au units library — https://aurora-opensource.github.io/au/main/
-#include "au/units/hertz.hh"
-#include "au/units/seconds.hh"
-#include "au/units/minutes.hh"
-#include "au/units/hours.hh"
-#include "au/units/days.hh"
 #include "au/prefix.hh"
+#include "au/units/days.hh"
+#include "au/units/hertz.hh"
+#include "au/units/hours.hh"
+#include "au/units/minutes.hh"
+#include "au/units/seconds.hh"
 
 // Bring in Au's core quantity type so consumers only need this header.
 #include "au/quantity.hh"
 
-namespace sdrunit {
+namespace sdrunit
+{
 
 // ── Frequency quantity makers ─────────────────────────────────────────────────
 // Usage:  Hz(100.0)       →  100 Hz
@@ -62,7 +63,7 @@ inline constexpr auto min = au::minutes;
 inline constexpr auto h   = au::hours;
 inline constexpr auto day = au::days;
 
-} // namespace sdrunit
+}  // namespace sdrunit
 
 /*
 ========================================================================

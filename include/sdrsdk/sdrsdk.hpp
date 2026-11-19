@@ -19,11 +19,12 @@ an application needs to include to use the full SDK.
  */
 #pragma once
 // Umbrella header — include this for full SDK access.
-#include <sdr/Types.hpp>          // canonical types (from SdrTaskApi)
-#include <sdr/MessageCodec.hpp>   // wire encode/decode (from SdrTaskApi)
-#include "SdrClient.hpp"
 #include "IqStream.hpp"
+#include "SdrClient.hpp"
 #include "Spectrum.hpp"
+
+#include <sdr/MessageCodec.hpp>  // wire encode/decode (from SdrTaskApi)
+#include <sdr/Types.hpp>         // canonical types (from SdrTaskApi)
 
 /*
 ========================================================================

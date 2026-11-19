@@ -29,13 +29,16 @@ Contact author for permission: https://github.com/OpenRFStack
  * @see SdrClient, Spectrum
  */
 #pragma once
-#include <sdr/Types.hpp>
 #include "sdrsdk/units.hpp"
-#include <vector>
+
+#include <sdr/Types.hpp>
+
 #include <complex>
 #include <functional>
+#include <vector>
 
-namespace sdr {
+namespace sdr
+{
 
 /**
  * @class IqStream
@@ -45,7 +48,8 @@ namespace sdr {
  * All @c collect* methods block until the requested data is received or
  * the internal timeout expires.
  */
-class IqStream {
+class IqStream
+{
 public:
     /**
      * @brief Bind a UDP socket on @p port.
@@ -53,53 +57,65 @@ public:
      * @param timeout Maximum wait per packet before a receive error is raised.
      * @throws std::runtime_error if the socket cannot be bound.
      */
-    explicit IqStream(int port,
-                      au::QuantityD<au::Seconds> timeout = sdrunit::s(10.0));
+    explicit IqStream(int port, au::QuantityD<au::Seconds> timeout = sdrunit::s(10.0));
     ~IqStream();
 
     IqStream(const IqStream&)            = delete;
     IqStream& operator=(const IqStream&) = delete;
 
     /// @brief Collect @p n_samples interleaved float32 I,Q,I,Q,… samples.
-    std::vector<float>                collect(int n_samples);
+    std::vector<float> collect(int n_samples);
 
     /// @brief Collect interleaved samples for a fixed duration (blocking).
-    std::vector<float>                collect_for(au::QuantityD<au::Seconds> duration);
+    std::vector<float> collect_for(au::QuantityD<au::Seconds> duration);
 
     /// @brief Collect @p n_samples complex<float> samples.
-    std::vector<std::complex<float>>  collect_complex(int n_samples);
+    std::vector<std::complex<float>> collect_complex(int n_samples);
 
     /// @brief Collect complex<float> samples for a fixed duration (blocking).
-    std::vector<std::complex<float>>  collect_complex_for(au::QuantityD<au::Seconds> duration);
+    std::vector<std::complex<float>> collect_complex_for(au::QuantityD<au::Seconds> duration);
 
     /**
      * @brief Stream packets to a callback until the callback returns false or timeout.
      * @param cb      Called for each received packet. Return false to stop.
      * @param timeout Overall receive timeout.
      */
-    using PacketCb = std::function<bool(const IqPacketHeader&,
-                                        const float* iq, int n_samples)>;
-    void stream(PacketCb cb,
-                au::QuantityD<au::Seconds> timeout = sdrunit::s(30.0));
+    using PacketCb = std::function<bool(const IqPacketHeader&, const float* iq, int n_samples)>;
+    void stream(PacketCb cb, au::QuantityD<au::Seconds> timeout = sdrunit::s(30.0));
 
-    int  port()       const { return port_; }    ///< Bound UDP port.
-    long packets_rx() const { return pkts_rx_; } ///< Total packets received.
-    long samples_rx() const { return samp_rx_; } ///< Total IQ samples received.
-    long overflows()  const { return overflow_; }///< Overflow packet count.
+    int port() const
+    {
+        return port_;
+    }  ///< Bound UDP port.
+
+    long packets_rx() const
+    {
+        return pkts_rx_;
+    }  ///< Total packets received.
+
+    long samples_rx() const
+    {
+        return samp_rx_;
+    }  ///< Total IQ samples received.
+
+    long overflows() const
+    {
+        return overflow_;
+    }  ///< Overflow packet count.
 
 private:
-    int   port_;
+    int    port_;
     double timeout_s_;
-    int   fd_       = -1;
-    long  pkts_rx_  = 0;
-    long  samp_rx_  = 0;
-    long  overflow_  = 0;
+    int    fd_       = -1;
+    long   pkts_rx_  = 0;
+    long   samp_rx_  = 0;
+    long   overflow_ = 0;
 
     void open_socket();
     void close_socket();
 };
 
-} // namespace sdr
+}  // namespace sdr
 
 /*
 ========================================================================

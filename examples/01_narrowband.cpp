@@ -12,21 +12,25 @@ Contact author for permission: https://github.com/OpenRFStack
 */
 // Example 1 — NARROWBAND task: tune, collect IQ, print stats.
 #include <sdrsdk/sdrsdk.hpp>
+
+#include <cmath>
+#include <iostream>
+
 #include <au/units/hertz.hh>
 #include <au/units/seconds.hh>
-#include <iostream>
-#include <cmath>
 
-int main() {
+int main()
+{
     sdr::SdrClient client("amqp://localhost:5672");
 
     std::cout << "Connecting to broker...\n";
     client.connect();
 
     // Tune to 476.5 MHz, 2 MHz BW, collect for 3 seconds
-    auto resp = client.narrowband(au::hertz(476.5e6), au::hertz(2e6),
-                                  au::hertz(2e6), au::seconds(3.0));
-    if (!resp.accepted) {
+    auto resp =
+        client.narrowband(au::hertz(476.5e6), au::hertz(2e6), au::hertz(2e6), au::seconds(3.0));
+    if (!resp.accepted)
+    {
         std::cerr << "Rejected: " << resp.reject_reason << "\n";
         return 1;
     }
@@ -35,12 +39,13 @@ int main() {
 
     // Receive IQ
     sdr::IqStream stream(port);
-    auto samples = stream.collect_complex(200'000);
+    auto          samples = stream.collect_complex(200'000);
     client.stop(resp.task_id);
 
     // Compute RMS power
     double pwr = 0;
-    for (auto& s : samples) pwr += std::norm(s);
+    for (auto& s : samples)
+        pwr += std::norm(s);
     pwr = 10.0 * std::log10(pwr / samples.size() + 1e-30);
 
     std::cout << "Collected " << samples.size() << " samples\n"
