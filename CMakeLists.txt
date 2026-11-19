@@ -29,6 +29,9 @@ FetchContent_Declare(Au
     GIT_TAG        "0.5.1"
     GIT_SHALLOW    TRUE
     EXCLUDE_FROM_ALL)
+# Au registers its own gtest targets with CTest; they are never built here,
+# so `ctest` reported 30+ *_NOT_BUILT failures. Keep Au's tests out of our suite.
+set(AU_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(Au)
 
 # ── FFTW3 ─────────────────────────────────────────────────────────────────────
@@ -51,11 +54,17 @@ endif()
 find_path(PROTON_INCLUDE_DIRS proton/connection.hpp REQUIRED)
 find_library(PROTON_CPP_LIB NAMES qpid-proton-cpp REQUIRED)
 find_library(PROTON_C_LIB   NAMES qpid-proton     REQUIRED)
+# Locate the headers ourselves. This used to read ${PROTON_INCLUDE_DIRS},
+# which SdrSdk never sets: it leaked in from the parent project's
+# pkg_check_modules() cache. On Debian multiarch that cached path is the
+# non-existent /usr/lib/include, so every *re*-configure of a parent build
+# (e.g. SdrResourceManager after editing a CMakeLists) failed.
+find_path(SDRSDK_PROTON_INCLUDE_DIR NAMES proton/connection.hpp REQUIRED)
 
 add_library(SdrSdk_Proton UNKNOWN IMPORTED)
 set_target_properties(SdrSdk_Proton PROPERTIES
     IMPORTED_LOCATION             "${PROTON_CPP_LIB}"
-    INTERFACE_INCLUDE_DIRECTORIES "${PROTON_INCLUDE_DIRS}"
+    INTERFACE_INCLUDE_DIRECTORIES "${SDRSDK_PROTON_INCLUDE_DIR}"
     INTERFACE_LINK_LIBRARIES      "${PROTON_C_LIB}"
 )
 
