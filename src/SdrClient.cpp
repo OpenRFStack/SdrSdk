@@ -62,139 +62,12 @@ static std::string make_uuid()
     return s.str();
 }
 
-static int64_t now_ms()
-{
-    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-}
-
-// ── JSON encoding for TaskRequest (client → controller) ──────────────────────
-// MessageCodec::decode() handles the reverse (controller parsing incoming).
-static json encode_request(const sdr::TaskRequest& req, const std::string& dest_ip)
-{
-    // msg_type varies by task type
-    std::string msg_type = "TASK_REQUEST";
-    if (req.task_type == sdr::TaskType::SNAPSHOT)
-        msg_type = "TASK_REQUEST_SNAPSHOT";
-    if (req.task_type == sdr::TaskType::SCAN)
-        msg_type = "TASK_REQUEST_SCAN";
-    if (req.task_type == sdr::TaskType::CALIBRATION)
-        msg_type = "TASK_REQUEST_CALIBRATION";
-
-    json sched;
-    sched["mode"] = sdr::scheduleModeToString(req.schedule_mode);
-    if (req.schedule_mode == sdr::ScheduleMode::IMMEDIATE)
-        sched["duration_ms"] = req.duration_ms;
-    else if (req.schedule_mode == sdr::ScheduleMode::SCHEDULED)
-    {
-        sched["start_time_epoch_ms"] = req.start_time_ms;
-        sched["end_time_epoch_ms"]   = req.end_time_ms;
-    }
-
-    json j = {
-        {"msg_type", msg_type},
-        {"schema_version", sdr::SCHEMA_VERSION},
-        {"request_id", req.request_id},
-        {"timestamp_ms", now_ms()},
-        {"task_type", sdr::taskTypeToString(req.task_type)},
-        {"rank", req.rank},
-        {"schedule", sched},
-        {"rf",
-         {
-             {"center_freq_hz", req.rf.center_freq_hz},
-             {"bandwidth_hz", req.rf.bandwidth_hz},
-             {"sample_rate_sps", req.rf.sample_rate_sps},
-             {"rx_count", req.rf.rx_count},
-         }},
-        {"streaming",
-         {{"dest_ip", req.streaming.dest_ip.empty() ? dest_ip : req.streaming.dest_ip}}},
-    };
-
-    if (req.task_type == sdr::TaskType::WIDEBAND && req.wb_params)
-        j["wideband"] = {{"record_raw_iq", req.wb_params->record_raw_iq},
-                         {"fft_size", req.wb_params->fft_size}};
-    else if (req.task_type == sdr::TaskType::WIDEBAND)
-        j["wideband"] = {{"record_raw_iq", true}, {"fft_size", 2048}};
-
-    if (req.snapshot_params)
-    {
-        j["snapshot"] = {
-            {"center_freq_hz", req.rf.center_freq_hz},
-            {"bandwidth_hz", req.rf.bandwidth_hz},
-            {"sample_rate_sps", req.rf.sample_rate_sps},
-            {"fft_size", req.snapshot_params->fft_size},
-            {"n_averages", req.snapshot_params->n_averages},
-        };
-    }
-
-    if (req.trigger_params)
-    {
-        auto& t      = *req.trigger_params;
-        j["trigger"] = {
-            {"trigger_type", t.trigger_type},
-            {"threshold_dbfs", t.threshold_dbfs},
-            {"pre_trigger_ms", t.pre_trigger_ms},
-            {"post_trigger_ms", t.post_trigger_ms},
-            {"max_captures", t.max_captures},
-        };
-    }
-
-    if (req.scan_params)
-    {
-        json entries = json::array();
-        for (auto& e : req.scan_params->entries)
-            entries.push_back({
-                {"step", e.step},
-                {"center_freq_hz", e.center_freq_hz},
-                {"bandwidth_hz", e.bandwidth_hz},
-                {"sample_rate_sps", e.sample_rate_sps},
-                {"dwell_ms", e.dwell_ms},
-            });
-        j["scan_params"] = {{"repeat", req.scan_params->repeat}, {"entries", entries}};
-    }
-
-    if (req.cal_params)
-    {
-        auto& c          = *req.cal_params;
-        j["calibration"] = {
-            {"center_freq_hz", req.rf.center_freq_hz},
-            {"bandwidth_hz", req.rf.bandwidth_hz},
-            {"sample_rate_sps", req.rf.sample_rate_sps},
-            {"duration_ms", req.duration_ms},
-            {"rx_count_per_device", req.rf.rx_count},
-            {"coherency_group", c.coherency_group},
-        };
-    }
-
-    return j;
-}
-
-// ── Decode controller response → TaskResponse ─────────────────────────────────
-static sdr::TaskResponse decode_response(const json& j)
-{
-    sdr::TaskResponse resp;
-    resp.request_id    = j.value("request_id", "");
-    resp.task_id       = j.value("task_id", "");
-    resp.accepted      = (j.value("status", "") == "ACCEPTED") || j.value("accepted", false);
-    resp.reject_reason = j.value("reject_reason", "");
-    auto rc            = j.value("reject_code", std::string{});
-    // Map common reject codes
-    if (rc == "FREQ_OUT_OF_RANGE")
-        resp.reject_code = sdr::RejectCode::FREQ_OUT_OF_RANGE;
-    else if (rc == "TASK_LIMIT_REACHED")
-        resp.reject_code = sdr::RejectCode::TASK_LIMIT_REACHED;
-    else if (rc == "PORT_POOL_EXHAUSTED")
-        resp.reject_code = sdr::RejectCode::PORT_POOL_EXHAUSTED;
-
-    for (const auto& s : j.value("streams", json::array()))
-    {
-        sdr::AssignedStream as;
-        as.udp_port  = s.value("udp_port", 0);
-        as.stream_id = s.value("stream_id", "");
-        as.udp_ip    = s.value("dest_ip", "");
-        resp.streams.push_back(std::move(as));
-    }
-    return resp;
-}
+// Requests are encoded and responses decoded by sdr::MessageCodec, the same
+// code the controller uses: the hand-rolled encoder here sent "TASK_REQUEST"
+// for triggered captures (the controller ignored the trigger), dropped
+// coherency_group / devices / dest_ports / gains / device constraints, read
+// stream addresses from "dest_ip" (the controller sends "udp_ip") and mapped
+// 3 of the reject codes.
 
 // ── AMQP implementation ───────────────────────────────────────────────────────
 
@@ -211,6 +84,11 @@ struct SdrClient::Impl : proton::messaging_handler
     proton::sender     sender_;
     proton::receiver   receiver_;
     std::atomic<bool>  connected_{false};
+    // Replies come to a private dynamic queue (reply_to on every request).
+    // The shared response queue let concurrent clients take each other's
+    // replies (2 clients x 20 requests: 1 lost; triggered() got none).
+    std::string                      reply_addr_;  // proton thread only
+    std::atomic<proton::work_queue*> wq_{nullptr};
 
     std::mutex              conn_mu_;
     std::condition_variable conn_cv_;
@@ -261,19 +139,29 @@ struct SdrClient::Impl : proton::messaging_handler
                               proton::sender_options().target(proton::target_options().capabilities(
                                   {proton::symbol("queue")})));
         receiver_ = conn_.open_receiver(
-            cfg.resp_queue,
-            proton::receiver_options().source(
-                proton::source_options().capabilities({proton::symbol("queue")})));
+            "", proton::receiver_options().source(proton::source_options().dynamic(true)));
+    }
+
+    // Also after a reconnect: proton restores the link, the broker assigns a
+    // fresh dynamic address.
+    void on_receiver_open(proton::receiver& r) override
+    {
+        reply_addr_ = r.source().address();
+        wq_.store(&r.work_queue());
+        flush();
+        if (!connected_.exchange(true))
+            conn_cv_.notify_all();
     }
 
     void flush()
     {
         std::lock_guard<std::mutex> g(out_mu_);
-        while (!out_q_.empty() && sender_.credit() > 0)
+        while (!out_q_.empty() && !reply_addr_.empty() && sender_.credit() > 0)
         {
             proton::message m;
             m.body(out_q_.front());
             m.content_type("application/json");
+            m.reply_to(reply_addr_);
             sender_.send(m);
             out_q_.pop_front();
         }
@@ -282,8 +170,6 @@ struct SdrClient::Impl : proton::messaging_handler
     void on_sendable(proton::sender&) override
     {
         flush();
-        if (!connected_.exchange(true))
-            conn_cv_.notify_all();
     }
 
     void on_connection_open(proton::connection&) override
@@ -332,32 +218,33 @@ struct SdrClient::Impl : proton::messaging_handler
     void on_transport_error(proton::transport&) override
     {
         connected_ = false;
+        reply_addr_.clear();  // a reconnect brings a new one
     }
 
-    void enqueue(const json& j)
+    void enqueue(std::string body)
     {
-        std::string body = j.dump();
         {
             std::lock_guard<std::mutex> g(out_mu_);
             out_q_.push_back(std::move(body));
         }
-        if (connected_.load())
-            conn_.work_queue().schedule(proton::duration(0),
-                                        [this]
-                                        {
-                                            flush();
-                                        });
+        // add() wakes the connection; a scheduled task does not, so the send
+        // could wait for the next inbound frame (same fault as the RM's RM-87).
+        if (auto* wq = wq_.load())
+            wq->add(
+                [this]
+                {
+                    flush();
+                });
     }
 
-    json rpc(const json& req, int timeout_ms)
+    std::string rpc(std::string body, const std::string& rid, int timeout_ms)
     {
-        std::string rid    = req.value("request_id", make_uuid());
         auto        waiter = std::make_shared<Waiter>();
         {
             std::lock_guard<std::mutex> g(waiters_mu_);
             waiters_[rid] = waiter;
         }
-        enqueue(req);
+        enqueue(std::move(body));
         auto deadline = steady_clock::now() + milliseconds(timeout_ms);
         {
             std::unique_lock<std::mutex> lk(waiter->mu);
@@ -374,7 +261,7 @@ struct SdrClient::Impl : proton::messaging_handler
         }
         if (!waiter->done)
             return {};
-        return json::parse(waiter->body);
+        return waiter->body;
     }
 };
 
@@ -439,13 +326,22 @@ bool SdrClient::isConnected() const
     return impl_->connected_.load();
 }
 
-TaskResponse SdrClient::submit(const TaskRequest& req)
+TaskResponse SdrClient::submit(const TaskRequest& req_in)
 {
-    json j    = encode_request(req, cfg_.dest_ip);
-    json resp = impl_->rpc(j, static_cast<int>(cfg_.timeout.in(au::milli(au::seconds))));
-    if (resp.is_null())
+    TaskRequest req = req_in;
+    if (req.request_id.empty())
+        req.request_id = make_uuid();
+    if (req.streaming.dest_ip.empty())
+        req.streaming.dest_ip = cfg_.dest_ip;
+    const auto body = impl_->rpc(MessageCodec::encodeTaskRequest(req),
+                                 req.request_id,
+                                 static_cast<int>(cfg_.timeout.in(au::milli(au::seconds))));
+    if (body.empty())
         throw SdrError("No response from controller (timeout or disconnect)");
-    return decode_response(resp);
+    auto resp = MessageCodec::decodeTaskResponse(body);
+    if (!resp)
+        throw SdrError("Malformed response from controller");
+    return *resp;
 }
 
 // ── Convenience methods ───────────────────────────────────────────────────────
@@ -578,24 +474,22 @@ TaskResponse SdrClient::calibration(au::QuantityD<au::Hertz>        cf,
 
 void SdrClient::stop(const std::string& task_id, const std::string& reason)
 {
-    impl_->enqueue({
-        {"msg_type", "TASK_STOP"},
-        {"request_id", make_uuid()},
-        {"task_id", task_id},
-        {"timestamp_ms", now_ms()},
-        {"reason", reason.empty() ? "client stop" : reason},
-    });
+    TaskRequest r;
+    r.msg_type   = "TASK_STOP";
+    r.request_id = make_uuid();
+    r.task_id    = task_id;
+    r.reason     = reason.empty() ? "client stop" : reason;
+    impl_->enqueue(MessageCodec::encodeTaskRequest(r));
 }
 
 void SdrClient::cancel(const std::string& task_id, const std::string& reason)
 {
-    impl_->enqueue({
-        {"msg_type", "TASK_CANCEL"},
-        {"request_id", make_uuid()},
-        {"task_id", task_id},
-        {"timestamp_ms", now_ms()},
-        {"reason", reason.empty() ? "client cancel" : reason},
-    });
+    TaskRequest r;
+    r.msg_type   = "TASK_CANCEL";
+    r.request_id = make_uuid();
+    r.task_id    = task_id;
+    r.reason     = reason.empty() ? "client cancel" : reason;
+    impl_->enqueue(MessageCodec::encodeTaskRequest(r));
 }
 
 }  // namespace sdr

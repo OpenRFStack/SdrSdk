@@ -73,7 +73,7 @@ public:
         std::string user                   = "sdr_ctrl";               ///< AMQP username.
         std::string password               = "sdr_hw_test";            ///< AMQP password.
         std::string req_queue              = "sdr.task.request";   ///< Outbound task request queue.
-        std::string resp_queue             = "sdr.task.response";  ///< Inbound task response queue.
+        std::string resp_queue = "sdr.task.response";  ///< Unused: replies go to a private dynamic queue (reply_to).
         std::string dest_ip                = "127.0.0.1";          ///< Local IP for UDP IQ receive.
         au::QuantityD<au::Seconds> timeout = sdrunit::s(20.0);     ///< Response wait timeout.
     };

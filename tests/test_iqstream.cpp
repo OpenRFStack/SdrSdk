@@ -92,6 +92,41 @@ TEST(IqStream, IgnoresBadMagic)
     EXPECT_TRUE(samples.empty());
 }
 
+// Lost packets (sequence gap) and radio overflows are counted; overflows()
+// used to stay 0 and gaps were invisible.
+TEST(IqStream, CountsSequenceGapsAndOverflows)
+{
+    const int     port = 34'571;
+    sdr::IqStream stream(port, sdrunit::s(1.0));
+    std::thread   sender(
+        [port]
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            int         fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+            sockaddr_in dst{};
+            dst.sin_family = AF_INET;
+            dst.sin_port   = htons(port);
+            inet_pton(AF_INET, "127.0.0.1", &dst.sin_addr);
+            for (uint32_t seq : {7u, 8u, 12u, 13u})  // 9..11 lost
+            {
+                sdr::IqPacketHeader hdr{};
+                hdr.magic       = sdr::IQ_PACKET_MAGIC;
+                hdr.sequence    = seq;
+                hdr.num_samples = 4;
+                hdr.flags       = seq == 13u ? sdr::IQ_FLAG_OVERFLOW : 0;
+                std::vector<uint8_t> buf(sizeof(hdr) + 4 * 2 * sizeof(float), 0);
+                std::memcpy(buf.data(), &hdr, sizeof(hdr));
+                ::sendto(fd, buf.data(), buf.size(), 0, (sockaddr*)&dst, sizeof(dst));
+            }
+            ::close(fd);
+        });
+    auto got = stream.collect(16);
+    sender.join();
+    EXPECT_EQ(got.size(), 32u);
+    EXPECT_EQ(stream.packets_lost(), 3);
+    EXPECT_EQ(stream.overflows(), 1);
+}
+
 /*
 ========================================================================
 End of file — OpenRFStack

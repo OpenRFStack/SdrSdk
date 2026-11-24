@@ -16,6 +16,7 @@ Contact author for permission: https://github.com/OpenRFStack
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <stdexcept>
@@ -91,6 +92,14 @@ void IqStream::stream(PacketCb cb, au::QuantityD<au::Seconds> timeout)
         auto* iq = reinterpret_cast<float*>(buf + sizeof(hdr));
         pkts_rx_++;
         samp_rx_ += hdr.num_samples;
+        // Sequence numbers count every packet the controller produced (ICD
+        // 10.4); a jump is loss. overflows() was never counted.
+        if (have_seq_ && !(hdr.flags & IQ_FLAG_FIRST_PACKET))
+            lost_ += (long)(uint32_t)(hdr.sequence - last_seq_ - 1u);
+        last_seq_ = hdr.sequence;
+        have_seq_ = true;
+        if (hdr.flags & IQ_FLAG_OVERFLOW)
+            ++overflow_;
 
         if (!cb(hdr, iq, hdr.num_samples))
             break;
@@ -104,8 +113,8 @@ std::vector<float> IqStream::collect(int n_samples)
     stream(
         [&](const IqPacketHeader&, const float* iq, int n) -> bool
         {
-            for (int i = 0; i < n * 2 && (int)out.size() < n_samples * 2; ++i)
-                out.push_back(iq[i]);
+            const int take = std::min(n * 2, n_samples * 2 - (int)out.size());
+            out.insert(out.end(), iq, iq + take);
             return (int)out.size() < n_samples * 2;
         },
         sdrunit::s(timeout_s_));
@@ -118,8 +127,7 @@ std::vector<float> IqStream::collect_for(au::QuantityD<au::Seconds> duration)
     stream(
         [&](const IqPacketHeader&, const float* iq, int n) -> bool
         {
-            for (int i = 0; i < n * 2; ++i)
-                out.push_back(iq[i]);
+            out.insert(out.end(), iq, iq + n * 2);
             return true;
         },
         duration);

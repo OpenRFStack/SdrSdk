@@ -101,15 +101,25 @@ public:
     long overflows() const
     {
         return overflow_;
-    }  ///< Overflow packet count.
+    }  ///< Packets flagged IQ_FLAG_OVERFLOW (radio-side sample loss).
+
+    /// Packets lost on the way (sequence-number gaps): collect() results that
+    /// spanned a gap are not contiguous in time. Was not detected at all.
+    long packets_lost() const
+    {
+        return lost_;
+    }
 
 private:
-    int    port_;
-    double timeout_s_;
-    int    fd_       = -1;
-    long   pkts_rx_  = 0;
-    long   samp_rx_  = 0;
-    long   overflow_ = 0;
+    int      port_;
+    double   timeout_s_;
+    int      fd_       = -1;
+    long     pkts_rx_  = 0;
+    long     samp_rx_  = 0;
+    long     overflow_ = 0;
+    long     lost_     = 0;
+    uint32_t last_seq_ = 0;
+    bool     have_seq_ = false;
 
     void open_socket();
     void close_socket();
